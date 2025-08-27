@@ -6,4 +6,3 @@ int main() {
     return 0;
 }
 
-// to compile use: g++ main.cpp -o main.exe
