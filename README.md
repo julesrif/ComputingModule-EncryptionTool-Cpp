@@ -28,7 +28,17 @@ Reload and test with
 ```
 
 ## Compilation
-`g++ main.cpp -o main.exe`
+Compiles with linked libraries
+`g++ -o encoder main.cpp -lssl -lcrypto` 
+
 
 ## Root folder
 `/c/Users/Julio/Documents/git/ComputingModule-EncryptionTool-Cplusplus`
+
+## Use
+
+To cypher file:
+`./encoder 1 file.txt`
+
+To de-cypher file:
+`./encoder 0 file.txt `
