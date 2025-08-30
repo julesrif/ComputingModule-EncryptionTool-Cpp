@@ -38,7 +38,7 @@ Compiles with linked libraries
 ## Use
 
 To cypher file:
-`./encoder 1 file.txt`
+`./encoder 1 jasho.png`
 
 To de-cypher file:
-`./encoder 0 file.txt `
+`./encoder 0 jasho_encrypted.png`

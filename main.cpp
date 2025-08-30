@@ -4,7 +4,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
-
+#include <list>    // to use list of string
 #include <memory>  // for unique_ptr
 #include <fstream> // to read and write file
 // to encode
@@ -27,8 +27,49 @@ class Decoder
         // open file to decrypt
         auto file_to_decrypt = make_unique<ifstream>();
         file_to_decrypt->open(source_file, ios::binary);
+        if (!file_to_decrypt->is_open())
+        {
+            cerr << "Error: file cannot be opened " << source_file << endl;
+            return nullptr;
+        }
         return file_to_decrypt;
     };
+
+    // source: https://www.geeksforgeeks.org/cpp/how-to-convert-hex-string-to-byte-array-in-cpp/
+    vector<uint8_t> hexStringToByteArray(const string &hexString)
+    {
+        vector<uint8_t> byteArray;
+        string cleanHex;
+
+        // remove spaces and newlines
+        for (char c : hexString)
+        {
+            if (!isspace(c))
+                cleanHex += c;
+        }
+
+        if (cleanHex.length() % 2 != 0)
+        {
+            cerr << "Error: hex string length must be even\n";
+            return {};
+        }
+
+        // Loop through the hex string, two characters at a time
+        for (size_t i = 0; i < cleanHex.length(); i += 2)
+        {
+            // Extract two characters representing a byte
+            string byteString = cleanHex.substr(i, 2);
+
+            // Convert the byte string to a uint8_t value
+            uint8_t byteValue = static_cast<uint8_t>(
+                stoi(byteString, nullptr, 16));
+
+            // Add the byte to the byte array
+            byteArray.push_back(byteValue);
+        }
+
+        return byteArray;
+    }
 
     // source: https://wiki.openssl.org/index.php/EVP_Symmetric_Encryption_and_Decryption
     void handleErrors(void)
@@ -81,22 +122,45 @@ class Decoder
         return plaintext_len;
     }
 
-    void decrypt_file_with_aes(unique_ptr<ifstream> &file_ptr, string password, string iv) {
-        
+    vector<unsigned char> decrypt_file_with_aes(ifstream &file_to_decrypt, unsigned char *key)
+    {
+        ifstream &in = file_to_decrypt;
+        in.seekg(0, ios::beg); // force cursor to beginning of file
 
+        unsigned char init_vector[16];
+        in.read(reinterpret_cast<char *>(init_vector), 16);                                             // read initialization vector from the encoded file, first 16 bytes
+        vector<unsigned char> ciphertext((istreambuf_iterator<char>(in)), istreambuf_iterator<char>()); // read the rest of the encoded file
+        in.close();                                                                                     // release memory
+
+        vector<unsigned char> plaintext(ciphertext.size());
+
+        int decrypted_len = decrypt(
+            ciphertext.data(), // read pointer to data
+            ciphertext.size(), // read size of the data to be read
+            key,               // AES key to decode
+            init_vector,       // initialization vector to decode
+            plaintext.data()); // target variable
+
+        plaintext.resize(decrypted_len); // adjust length of the output
+
+        return plaintext;
     };
 
-    bool save_decrypted_file(string target_file)
+    bool save_decrypted_file(const string &target_file, vector<unsigned char> &decrypted_data)
     {
         // save decrypted file
-        ofstream myfile; // declare object
-        myfile.open(target_file);
-        myfile << "Writing this to a file.\n";
-        myfile.close();
+        ofstream output_file(target_file, ios::binary); // open the target file where decode content goes to
+        if (!output_file.is_open())
+        {
+            return false;
+        } // handle error
+        output_file.write(reinterpret_cast<const char *>(decrypted_data.data()), decrypted_data.size()); // write decoded content
+        output_file.close();                                                                             // close the file to release memory
         return true;
     };
 
-    list<string> extract_file_and_extension(string filename){
+    list<string> extract_file_and_extension(string filename)
+    {
         string target_filename;
         string target_file_extension;
 
@@ -113,17 +177,20 @@ class Decoder
         }
         return {target_filename, target_file_extension};
     }
-    
-public:
-    bool decode_file(string target_file, string target_file_format, string aes_password, string iv)
-    {
-        list<string> filename_and_extension = extract_file_and_extension(target_file);
-        string filename = filename_and_extension[0];
-        string file_extension = filename_and_extension[1];
 
-        auto file_ptr = open_file(target_file + '.' + target_file_format);
-        string decrypted_file = decrypt_file_with_aes(file_ptr, aes_password, iv);
-        bool success = save_decrypted_file(decrypted_file);
+public:
+    bool decode_file(string target_file, string aes_password)
+    {
+        // split full name into parts
+        list<string> filename_and_extension = extract_file_and_extension(target_file);
+        string filename = filename_and_extension.front();
+        string file_extension = filename_and_extension.back();
+
+        vector<unsigned char> key = hexStringToByteArray(aes_password); // decode password
+
+        auto file_ptr = open_file(filename + '.' + file_extension);                                  // create pointer to encoded file that will be decoded
+        vector<unsigned char> decrypted_data = decrypt_file_with_aes(*file_ptr, key.data());         // decode content
+        bool success = save_decrypted_file(filename + "_decoded." + file_extension, decrypted_data); // save to file
         return success;
     }
 };
@@ -135,6 +202,11 @@ class Encoder
         // open file to encrypt
         auto file_to_encrypt = make_unique<ifstream>();
         file_to_encrypt->open(source_file, ios::binary);
+        if (!file_to_encrypt->is_open())
+        {
+            cerr << "Error: file cannot be opened " << source_file << endl;
+            return nullptr;
+        }
         return file_to_encrypt;
     };
 
@@ -190,7 +262,7 @@ class Encoder
         return ciphertext_len;
     };
 
-    bool generate_aes_key(unsigned char *key, unsigned char *iv)
+    bool generate_aes_key(unsigned char *key, unsigned char *init_vector)
     {
         int aes_size_bytes = 32;
         int iv_size_bytes = 16;
@@ -199,39 +271,29 @@ class Encoder
         {
             return false; // handle error
         };
-        if (!RAND_bytes(iv, iv_size_bytes)) // this is not secret but must be unique
+        if (!RAND_bytes(init_vector, iv_size_bytes)) // this is not secret but must be unique
         {
             return false; // handle error
         };
 
         // source: https://medium.com/@ryan_forrester_/c-cout-in-hex-practical-guide-224db1748a3d
-        cout << "AES Key: ";
+        cout << "Key: ";
         for (int i = 0; i < aes_size_bytes; i++)
         {
             std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(key[i]);
         };
         cout << dec << endl; // return to decimal
-
-        cout << "AES IV:  ";
-        for (int i = 0; i < iv_size_bytes; i++)
-        {
-            std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(iv[i]);
-        }
+        cout << "(Copy this key, you will not be able to generate it again.)" << endl;
         cout << dec << endl;
         return true;
     };
 
-    vector<unsigned char> encode_file_with_aes(ifstream &file_to_encrypt)
+    vector<unsigned char> encode_file_with_aes(ifstream &file_to_encrypt, unsigned char *key, unsigned char *init_vector)
     {
         // read file to encrypt as string with dynamic buffer
         std::vector<unsigned char> file_as_text((std::istreambuf_iterator<char>(file_to_encrypt)),
                                                 std::istreambuf_iterator<char>());
         file_to_encrypt.close();
-
-        // encode file
-        unsigned char key[32];     // 32 bytes, 256 bits for AES-256
-        unsigned char iv[16];      // 16 bytes of initialization for 'CBC mode', adds randomization so twin messages are not encrypted equally
-        generate_aes_key(key, iv); // same as Fernet in Python
 
         vector<unsigned char> ciphertext(file_as_text.size() + EVP_MAX_BLOCK_LENGTH); // dynamic buffer for ciphertext (large enough for original text + AES padding)
 
@@ -241,7 +303,7 @@ class Encoder
             file_as_text.data(), // bytes of data string
             file_as_text.size(), // string size in bytes
             key,                 // AES key
-            iv,                  // initialization vector
+            init_vector,         // initialization vector
             ciphertext.data());  // output buffer
 
         ciphertext.resize(ciphertext_len); // downsize to required memory
@@ -249,15 +311,17 @@ class Encoder
         return ciphertext;
     }
 
-    bool save_encrypted_file(const string &filename, const vector<unsigned char> &encrypted_file)
+    bool save_encrypted_file(const string &filename, const vector<unsigned char> &encrypted_file, const unsigned char *init_vector)
     {
-        // save encrypted file
-        ofstream out(filename, std::ios::binary);
+        ofstream out(filename, std::ios::binary);                   // save encrypted file
+        out.write(reinterpret_cast<const char *>(init_vector), 16); // write to output_file iv
+        // write the rest of the file
         out.write(reinterpret_cast<const char *>(encrypted_file.data()), encrypted_file.size()); // it reads bytes as char*
         return true;
     };
-    
-    list<string> extract_file_and_extension(string filename){
+
+    list<string> extract_file_and_extension(string filename)
+    {
         string target_filename;
         string target_file_extension;
 
@@ -276,45 +340,37 @@ class Encoder
     }
 
 public:
-    bool encode_file(string target_file = "")
+    bool encode_file(string target_file)
     {
-        // split target_file name and extension
+        // split target_file name and extension for output name
         list<string> filename_and_extension = extract_file_and_extension(target_file);
-        string filename = filename_and_extension[0];
-        string file_extension = filename_and_extension[1];
+        string filename = filename_and_extension.front();
+        string file_extension = filename_and_extension.back();
 
-        size_t pos = target_file.rfind('.');
-        if (pos != string::npos)
-        {
-            target_filename = target_file.substr(0, pos);
-            target_file_extension = target_file.substr(pos + 1);
-        }
-        else
-        {
-            target_filename = target_file;
-            target_file_extension = ""; // no extension found
-        }
+        auto file_ptr = open_file(target_file);
 
-        auto file_ptr = open_file(target_file + '.' + target_file_extension);
-        std::vector<unsigned char> encrypted_file = encode_file_with_aes(*file_ptr);
-        bool success = save_encrypted_file(target_filename + "_encrypted." + target_file_extension, encrypted_file);
+        // initialize AES and Initialization Vector in Encode function for multiple use
+        unsigned char key[32];              // 32 bytes, 256 bits for AES-256
+        unsigned char init_vector[16];      // 16 bytes of initialization for 'CBC mode', adds randomization so twin messages are not encrypted equally
+        generate_aes_key(key, init_vector); // alike Fernet in Python
+
+        std::vector<unsigned char> encrypted_file = encode_file_with_aes(*file_ptr, key, init_vector);
+
+        bool success = save_encrypted_file(filename + "_encrypted." + file_extension, encrypted_file, init_vector);
         return success;
     };
 };
 
 int main(int argc, char *argv[])
 {
-    if (argc < 4)
+    if (argc != 3)
     {
         cout << "Use: main.exe <1 to encrypt, 0 to decrypt > <file> <password (optional)>\n";
         return 1;
     }
 
-    Encoder encoder;
     string operation = argv[1];
     string target_file = argv[2];
-    string password = argv[3]; // not used in encoding
-    string iv = argv[4]; // initialization vector for AES
 
     if (operation != "1" && operation != "0")
     {
@@ -322,14 +378,36 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    if (target_file.empty())
+    {
+        cout << "Target file is required.\n";
+        return 1;
+    }
+
     if (operation == "1")
     {
-        encoder.encode_file(target_file);
+        Encoder encoder;
+        if (!encoder.encode_file(target_file))
+        {
+            cerr << "Error encoding file.\n";
+            return 1;
+        }
+        cout << "File encoded successfully.\n";
     }
     else
     {
-        cout << "Decoding not implemented yet.\n";
-        encoder.decode_file(target_file, password, iv);
+        Decoder decoder;
+        // ask for password
+        string password;
+        cout << "Enter password: ";
+        cin >> password;
+
+        if (!decoder.decode_file(target_file, password))
+        {
+            cerr << "Error decoding file.\n";
+            return 1;
+        }
+        cout << "File decoded successfully.\n";
     }
 
     return 0;
