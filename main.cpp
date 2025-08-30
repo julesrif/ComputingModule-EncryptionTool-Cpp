@@ -14,8 +14,12 @@
 #include <openssl/rand.h>
 #include <sstream> // to split string
 #include <iomanip> // to print hex keys
+// to measure time
+#include <chrono>
+
 
 using namespace std;
+using namespace std::chrono; // source: https://www.geeksforgeeks.org/cpp/measure-execution-time-function-cpp/
 
 // source: https://www.youtube.com/watch?v=MNeX4EGtR5Y
 // source: https://cplusplus.com/doc/tutorial/files/
@@ -369,10 +373,12 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    string operation = argv[1];
+    int operation = stoi(argv[1]);
     string target_file = argv[2];
+    string benchmark = (argc > 3) ? argv[3] : "";
+    int times = (argc > 4) ? stoi(argv[4]) : 0;
 
-    if (operation != "1" && operation != "0")
+    if (operation != 1 && operation != 0)
     {
         cout << "Invalid option. Use 1 to encrypt or 0 to decrypt.\n";
         return 1;
@@ -384,8 +390,12 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    if (operation == "1")
+
+    auto start = high_resolution_clock::now(); // placeholder, will be replaced within operations
+
+    if (operation == 1)
     {
+        auto start = high_resolution_clock::now(); // timer starts after validation of parameters
         Encoder encoder;
         if (!encoder.encode_file(target_file))
         {
@@ -401,7 +411,7 @@ int main(int argc, char *argv[])
         string password;
         cout << "Enter password: ";
         cin >> password;
-
+        auto start = high_resolution_clock::now(); // timer starts after validation of parameters and password is written
         if (!decoder.decode_file(target_file, password))
         {
             cerr << "Error decoding file.\n";
@@ -409,6 +419,10 @@ int main(int argc, char *argv[])
         }
         cout << "File decoded successfully.\n";
     }
+    auto stop = high_resolution_clock::now();
+    auto duration = duration_cast<microseconds>(stop - start);
+
+    cout << "Elapsed time: " << duration.count()/1000000.0 << " seconds" << endl;
 
     return 0;
 };

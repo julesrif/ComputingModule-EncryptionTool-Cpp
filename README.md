@@ -31,11 +31,13 @@ Reload and test with
 Compiles with linked libraries
 `g++ -o encoder main.cpp -lssl -lcrypto` 
 
+I am using g++.exe (Rev8, Built by MSYS2 project) 15.2.0
 
-## Root folder
+
+## My Root folder
 `/c/Users/Julio/Documents/git/ComputingModule-EncryptionTool-Cplusplus`
 
-## Use
+# Use
 
 To cypher file:
 `./encoder 1 jasho.png`
