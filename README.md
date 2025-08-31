@@ -40,7 +40,14 @@ I am using g++.exe (Rev8, Built by MSYS2 project) 15.2.0
 # Use
 
 To cypher file:
-`./encoder 1 jasho.png`
+`./encoder 1 file.png`
 
 To de-cypher file:
-`./encoder 0 jasho_encrypted.png`
+`./encoder 0 file_encrypted.png`
+
+## Benchmark
+to encrypt 100 times
+`./encoder 1 file.png benchmark 100`
+
+to decrypt 100 times:
+`./encoder 0 file_encrypted.png benchmark 100`

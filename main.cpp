@@ -17,7 +17,6 @@
 // to measure time
 #include <chrono>
 
-
 using namespace std;
 using namespace std::chrono; // source: https://www.geeksforgeeks.org/cpp/measure-execution-time-function-cpp/
 
@@ -266,7 +265,7 @@ class Encoder
         return ciphertext_len;
     };
 
-    bool generate_aes_key(unsigned char *key, unsigned char *init_vector)
+    bool generate_aes_key(unsigned char *key, unsigned char *init_vector, bool is_last_run = false)
     {
         int aes_size_bytes = 32;
         int iv_size_bytes = 16;
@@ -281,14 +280,17 @@ class Encoder
         };
 
         // source: https://medium.com/@ryan_forrester_/c-cout-in-hex-practical-guide-224db1748a3d
-        cout << "Key: ";
-        for (int i = 0; i < aes_size_bytes; i++)
+        if (is_last_run) // print only last run (main use while benchmarking)
         {
-            std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(key[i]);
-        };
-        cout << dec << endl; // return to decimal
-        cout << "(Copy this key, you will not be able to generate it again.)" << endl;
-        cout << dec << endl;
+            cout << "Key: ";
+            for (int i = 0; i < aes_size_bytes; i++)
+            {
+                std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(key[i]);
+            };
+            cout << dec << endl; // return to decimal
+            cout << "(Copy this key, you will not be able to generate it again.)" << endl;
+            cout << dec << endl;
+        }
         return true;
     };
 
@@ -344,7 +346,7 @@ class Encoder
     }
 
 public:
-    bool encode_file(string target_file)
+    bool encode_file(string target_file, bool is_last_run=true)
     {
         // split target_file name and extension for output name
         list<string> filename_and_extension = extract_file_and_extension(target_file);
@@ -356,9 +358,9 @@ public:
         // initialize AES and Initialization Vector in Encode function for multiple use
         unsigned char key[32];              // 32 bytes, 256 bits for AES-256
         unsigned char init_vector[16];      // 16 bytes of initialization for 'CBC mode', adds randomization so twin messages are not encrypted equally
-        generate_aes_key(key, init_vector); // alike Fernet in Python
+        generate_aes_key(key, init_vector, is_last_run); // alike Fernet in Python
 
-        std::vector<unsigned char> encrypted_file = encode_file_with_aes(*file_ptr, key, init_vector);
+        std::vector<unsigned char> encrypted_file = encode_file_with_aes(*file_ptr, key, init_vector); // encode content
 
         bool success = save_encrypted_file(filename + "_encrypted." + file_extension, encrypted_file, init_vector);
         return success;
@@ -367,16 +369,22 @@ public:
 
 int main(int argc, char *argv[])
 {
-    if (argc != 3)
+    if (argc < 3 || argc > 5)
     {
-        cout << "Use: main.exe <1 to encrypt, 0 to decrypt > <file> <password (optional)>\n";
+        cout << "Use: main.exe <1 to encrypt, 0 to decrypt > <file> <password (optional)> <'benchmark' (optional)> <times (optional if benchmark)>\n";
         return 1;
     }
 
     int operation = stoi(argv[1]);
     string target_file = argv[2];
     string benchmark = (argc > 3) ? argv[3] : "";
-    int times = (argc > 4) ? stoi(argv[4]) : 0;
+    int times = (argc > 4) ? stoi(argv[4]) : 1;
+
+    if (benchmark != "benchmark" && benchmark != "")
+    {
+        cout << "Invalid benchmark flag" << endl;
+        return 0;
+    }
 
     if (operation != 1 && operation != 0)
     {
@@ -390,39 +398,81 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    string password; // initialize
 
-    auto start = high_resolution_clock::now(); // placeholder, will be replaced within operations
+    if ((benchmark == "benchmark") && (operation == 0))
+    { // benchmark asks for pasword just once
 
-    if (operation == 1)
-    {
-        auto start = high_resolution_clock::now(); // timer starts after validation of parameters
-        Encoder encoder;
-        if (!encoder.encode_file(target_file))
-        {
-            cerr << "Error encoding file.\n";
-            return 1;
-        }
-        cout << "File encoded successfully.\n";
-    }
-    else
-    {
-        Decoder decoder;
-        // ask for password
-        string password;
         cout << "Enter password: ";
         cin >> password;
-        auto start = high_resolution_clock::now(); // timer starts after validation of parameters and password is written
-        if (!decoder.decode_file(target_file, password))
-        {
-            cerr << "Error decoding file.\n";
-            return 1;
-        }
-        cout << "File decoded successfully.\n";
     }
-    auto stop = high_resolution_clock::now();
-    auto duration = duration_cast<microseconds>(stop - start);
 
-    cout << "Elapsed time: " << duration.count()/1000000.0 << " seconds" << endl;
+    auto start = high_resolution_clock::now(); // placeholder, will be replaced within non-benchmark operations
+    bool is_last_run = false;
 
+    for (int i = 0; i < times; i++) // regular run will only run once
+    {
+        if (operation == 1) // if encoding
+        {
+
+            // if last run
+            if (i == times - 1)
+            {
+                is_last_run = true;
+            };
+
+            {
+                if (benchmark != "benchmark")
+                {
+                    auto start = high_resolution_clock::now(); // timer starts after validation of parameters
+                }
+                Encoder encoder;
+                if (!encoder.encode_file(target_file, is_last_run))
+                {
+                    cerr << "Error encoding file.\n";
+                    return 1;
+                }
+                if (is_last_run)
+                {
+                    cout << "File encoded successfully.\n";
+                }
+            }
+        }
+        else
+        {
+            Decoder decoder;
+            if (benchmark != "benchmark")
+            {
+                // ask for password on regular run
+                cout << "Enter password: ";
+                cin >> password;
+                auto start = high_resolution_clock::now(); // timer starts after validation of parameters and password is written
+            }
+            if (!decoder.decode_file(target_file, password))
+            {
+                cerr << "Error decoding file.\n";
+                return 1;
+            }
+            if (is_last_run)
+            {
+                cout << "File decoded successfully.\n";
+            }
+        };
+
+        if (benchmark != "benchmark")
+        {
+            auto stop = high_resolution_clock::now();
+            auto duration = duration_cast<microseconds>(stop - start);
+            cout << "Elapsed time: " << duration.count() / 1000000.0 << " seconds" << endl;
+        };
+    };
+
+    if (benchmark == "benchmark")
+    {
+        auto stop = high_resolution_clock::now();
+        auto duration = duration_cast<microseconds>(stop - start);
+        cout << "Total time for " << times << " runs: " << duration.count() / 1000000.0 << " seconds" << endl;
+        cout << "Average time per run: " << (duration.count() / 1000000.0) / times << " seconds" << endl;
+    }
     return 0;
 };
