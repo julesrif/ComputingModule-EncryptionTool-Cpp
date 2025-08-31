@@ -25,7 +25,7 @@ using namespace std::chrono; // source: https://www.geeksforgeeks.org/cpp/measur
 
 class Decoder
 {
-    unique_ptr<ifstream> open_file(string source_file)
+    unique_ptr<ifstream> open_file(string source_file, bool is_last_run = true)
     {
         // open file to decrypt
         auto file_to_decrypt = make_unique<ifstream>();
@@ -35,6 +35,15 @@ class Decoder
             cerr << "Error: file cannot be opened " << source_file << endl;
             return nullptr;
         }
+
+        if (is_last_run)
+        {
+            // print file size
+            file_to_decrypt->seekg(0, ios::end);
+            cout << "File to decode size: " << file_to_decrypt->tellg() << " bytes" << endl;
+            file_to_decrypt->seekg(0, ios::beg);
+        }
+
         return file_to_decrypt;
     };
 
@@ -182,7 +191,7 @@ class Decoder
     }
 
 public:
-    bool decode_file(string target_file, string aes_password)
+    bool decode_file(string target_file, string aes_password, bool is_last_run = true)
     {
         // split full name into parts
         list<string> filename_and_extension = extract_file_and_extension(target_file);
@@ -191,7 +200,7 @@ public:
 
         vector<unsigned char> key = hexStringToByteArray(aes_password); // decode password
 
-        auto file_ptr = open_file(filename + '.' + file_extension);                                  // create pointer to encoded file that will be decoded
+        auto file_ptr = open_file(filename + '.' + file_extension, is_last_run);                     // create pointer to encoded file that will be decoded
         vector<unsigned char> decrypted_data = decrypt_file_with_aes(*file_ptr, key.data());         // decode content
         bool success = save_decrypted_file(filename + "_decoded." + file_extension, decrypted_data); // save to file
         return success;
@@ -200,7 +209,7 @@ public:
 
 class Encoder
 {
-    unique_ptr<ifstream> open_file(string source_file)
+    unique_ptr<ifstream> open_file(string source_file, bool is_last_run = true)
     {
         // open file to encrypt
         auto file_to_encrypt = make_unique<ifstream>();
@@ -210,6 +219,15 @@ class Encoder
             cerr << "Error: file cannot be opened " << source_file << endl;
             return nullptr;
         }
+
+        if (is_last_run)
+        {
+            // print file size
+            file_to_encrypt->seekg(0, ios::end);
+            cout << "File to encode size: " << file_to_encrypt->tellg() << " bytes" << endl;
+            file_to_encrypt->seekg(0, ios::beg);
+        }
+
         return file_to_encrypt;
     };
 
@@ -346,18 +364,18 @@ class Encoder
     }
 
 public:
-    bool encode_file(string target_file, bool is_last_run=true)
+    bool encode_file(string target_file, bool is_last_run = true)
     {
         // split target_file name and extension for output name
         list<string> filename_and_extension = extract_file_and_extension(target_file);
         string filename = filename_and_extension.front();
         string file_extension = filename_and_extension.back();
 
-        auto file_ptr = open_file(target_file);
+        auto file_ptr = open_file(target_file, is_last_run);
 
         // initialize AES and Initialization Vector in Encode function for multiple use
-        unsigned char key[32];              // 32 bytes, 256 bits for AES-256
-        unsigned char init_vector[16];      // 16 bytes of initialization for 'CBC mode', adds randomization so twin messages are not encrypted equally
+        unsigned char key[32];                           // 32 bytes, 256 bits for AES-256
+        unsigned char init_vector[16];                   // 16 bytes of initialization for 'CBC mode', adds randomization so twin messages are not encrypted equally
         generate_aes_key(key, init_vector, is_last_run); // alike Fernet in Python
 
         std::vector<unsigned char> encrypted_file = encode_file_with_aes(*file_ptr, key, init_vector); // encode content
@@ -448,7 +466,7 @@ int main(int argc, char *argv[])
                 cin >> password;
                 auto start = high_resolution_clock::now(); // timer starts after validation of parameters and password is written
             }
-            if (!decoder.decode_file(target_file, password))
+            if (!decoder.decode_file(target_file, password, is_last_run))
             {
                 cerr << "Error decoding file.\n";
                 return 1;
