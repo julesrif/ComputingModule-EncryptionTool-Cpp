@@ -38,13 +38,7 @@ Flags:
 `-O3` allows the highest level of optimization
 Source: https://blog.csdn.net/www_dong/article/details/145621322
 
-<<<<<<< HEAD
 Note: these 2 flags optimized my Encoding from 22 seconds to run 100 times to 1.90 seconds to run 100 times.
-=======
-Note: these 2 flags optimized my Encoding from 22 seconds to run 100 times to 1.82 seconds to run 100 times.
-
-
->>>>>>> 027bdf3 (optimization of runs and compilation)
 
 I am using g++.exe (Rev8, Built by MSYS2 project) 15.2.0
 
